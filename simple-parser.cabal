@@ -1,0 +1,57 @@
+cabal-version:      2.4
+name:               simple-parser
+version:            0.1.0.0
+
+-- A short (one-line) description of the package.
+-- synopsis:
+
+-- A longer description of the package.
+-- description:
+
+-- A URL where users can report bugs.
+-- bug-reports:
+license:            NONE
+author:             Andrea Manenti
+maintainer:         andrea.manenti@yahoo.com
+
+-- A copyright notice.
+-- copyright:
+-- category:
+-- extra-source-files: CHANGELOG.md
+
+library
+    exposed-modules:  SimpleParser.Parser
+    other-modules:    SimpleParser.ArgParser,
+                      SimpleParser.SyntaxTree,
+                      SimpleParser.ParseError,
+                      SimpleParser.ParseData
+
+    -- Modules included in this library but not exported.
+    -- other-modules:
+
+    -- LANGUAGE extensions used by modules in this package.
+    -- other-extensions:
+    build-depends:    base ^>=4.15.1.0,
+                      Cabal
+    hs-source-dirs:   .
+    default-language: Haskell2010
+
+executable simple-parser
+    main-is:          Main.hs
+    other-modules:    SimpleParser.Parser,
+                      SimpleParser.ArgParser,
+                      SimpleParser.SyntaxTree,
+                      SimpleParser.ParseError,
+                      SimpleParser.ParseData
+                      
+    -- Modules included in this executable, other than Main.
+    -- other-modules:
+
+    -- LANGUAGE extensions used by modules in this package.
+    -- other-extensions:
+    build-depends:
+        base ^>=4.15.1.0,
+        simple-parser
+    
+    hs-source-dirs:   .
+    default-language: Haskell2010
