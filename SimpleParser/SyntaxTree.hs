@@ -1,8 +1,9 @@
 module SimpleParser.SyntaxTree
   ( SyntaxTree (..)
   , Crumb (..)
-  , Parentheses (..)
   , Operator (..)
+  , Fixity (..)
+  , Precedence (..)
   , descend
   , append
   , act
@@ -12,7 +13,6 @@ module SimpleParser.SyntaxTree
   ) where
 
 import Data.List        (intercalate)
-import Data.Monoid      ((<>))
 
 -- Copied from https://hackage.haskell.org/package/ilist-0.4.0.1/docs/Data-List-Index.html#v:modifyAt
 modifyAt :: Int -> (a -> a) -> [a] -> [a]
@@ -40,41 +40,31 @@ instance Functor SyntaxTree where
   fmap f (Literal a)   = Literal $ f a
   fmap f (Expr hd pts) = Expr hd $ map (fmap f) pts
 
--- This semigroup instance is very important:
--- It allows us to construct the tree with <> as the parser runs
-instance Semigroup (SyntaxTree a) where
-  (Empty p)  <> (Empty q)  = Empty  (p++q)
-  (Expr h p) <> (Empty q)  = Expr h (p++q)
-  (Empty p)  <> (Expr h q) = Expr h (p++q)  -- never used
-  (Expr h p) <> Literal a  = Expr h (p++[Literal a])
-  Literal a  <> (Expr h p) = Expr h (Literal a:[Expr h p])  -- never used
-  Literal a  <> (Empty p)  = Empty  (Literal a:p)
-  (Empty p)  <> Literal a  = Empty  (p++[Literal a])
-  (Expr h p) <> (Expr g q) = Empty  (Expr h p:[Expr g q])
-  Literal a  <> Literal b  = Empty  [Literal a, Literal b]
-
--- We also need a Monoid instance to initialize an empty tree
--- or to parse tokens and discard them
-instance Monoid (SyntaxTree a) where
-  -- strictly speaking this is wrong because it doesn't
-  -- satisfy the law x <> mempty = mempty <> x for Literal
-  -- but the important thing is that this is the identity for Expr
-  mempty = Empty []
-
--- And we also make a new class: the parentesis class
--- It is used to control the construction of the tree
-class Semigroup a => Parentheses a where
-  popen  :: a -> a -> a
-  pclose :: a -> a
-
-instance Parentheses (SyntaxTree a) where
-  popen (Expr h p) (Empty x) = Expr h (p++x)
-  -- note in the line below the difference with <> when expr is Expr g q
-  popen (Expr h p) expr      = Expr h (p++[expr])
-  pclose x = Empty [x]
-
 -- Next we make the type for infix operators
-newtype Operator = Operator {opName :: String}
+data Fixity = Infix Int | InfixL Int | InfixR Int
+getPrecedence :: Fixity -> Int
+getPrecedence (Infix  a) = a
+getPrecedence (InfixL a) = a
+getPrecedence (InfixR a) = a
+
+data Operator = Operator {opName :: String, fixity :: Fixity}
+
+class Precedence a where
+  precedence :: a -> a -> Either (a,a) Ordering
+
+instance Precedence Fixity where
+  precedence a b
+    | getPrecedence a <  getPrecedence b = Right LT
+    | getPrecedence a >  getPrecedence b = Right GT
+    | getPrecedence a == getPrecedence b = case (a,b) of
+      (InfixR _, InfixR _) -> Right LT
+      (InfixL _, InfixL _) -> Right GT
+      x                    -> Left x
+
+instance Precedence Operator where
+  precedence a b = case precedence (fixity a) (fixity b) of
+    Right x -> Right x
+    Left  y -> Left  (a,b)
 
 instance Show a => Show (SyntaxTree a) where
   show = showDepth (-2) where
@@ -86,6 +76,13 @@ instance Show a => Show (SyntaxTree a) where
       close  = "]\n" ++ replicate n ' '
     showDepth n (Empty pts)   = showDepth n (Expr "Sequence" pts)
 
+instance Show Operator where
+  show (Operator op fix) = op ++ " [" ++ show fix ++ "]"
+
+instance Show Fixity where
+  show (Infix i)  = "infix "  ++ show i
+  show (InfixL i) = "infixl " ++ show i
+  show (InfixR i) = "infixr " ++ show i
 
 {-------------------------------
   Define a zipper for the tree

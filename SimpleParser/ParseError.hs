@@ -64,7 +64,7 @@ instance Ord (ParseError e i) where
   e <= f = len e <= len f where
     len (EndOfInput is)    = length is
     len (Unexpected a is)  = length is
-    len (CustomError e is) = length is
+    len (CustomError e is) = length is + 1  -- we give a bit of precedence to those
     len (NoAlternative is) = length is
 
 -- Some useful methods
