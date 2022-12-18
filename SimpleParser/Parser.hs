@@ -10,8 +10,9 @@ import Data.List               (intercalate, foldl')
 import Control.Applicative     (liftA, Alternative (..), (<**>))
 import Control.Monad           (ap)
 
-import SimpleParser.SyntaxTree ( SyntaxTree (..), Parentheses (..), Operator (..)
-                               , append, descend, goUp, goTop, act, actAt)
+import SimpleParser.SyntaxTree ( SyntaxTree (..), Operator (..), Fixity (..), Precedence (..)
+                               , append, descend, goUp, goTop, act, actAt
+                               )
 import SimpleParser.ParseError (ParseError (..), InputShow, prependHistory)
 import SimpleParser.ParseData  (ParseData (..), prependParsed)
 
@@ -52,6 +53,12 @@ instance Alternative (Parser i e) where
 infixl 4  <+>
 (<+>) :: (Semigroup a, Applicative m) => m a -> m a -> m a
 p <+> q = (<>) <$> p <*> q
+infixl 4  <:>
+(<:>) :: (Applicative m) => m a -> m [a] -> m [a]
+p <:> q = (:) <$> p <*> q
+infixl 4  <*<
+(<*<) :: Applicative m => m (b -> c) -> m (a -> b) -> m (a -> c)
+p <*< q = ((.) <$> p) <*> q
 
 -- When the parse is done we keep only the final result
 clean :: [Either (ParseError String i) (ParseData i a)] -> Either (ParseError String i) (ParseData i a)
@@ -136,51 +143,79 @@ decimal :: Parser Char e (SyntaxTree Int)
 decimal = Literal . read <$> many digit
 
 -- Parses an operator
-operator :: (Show e) => Parser Char e String
-operator = some op where
-  op = anyOf "`~!@#$%^&*=+:'<>?/."
+operator :: (Show e) => Parser Char e Operator 
+operator = operatorRead <$> some op where
+  op = anyOf "`~!@#$%^&*=+:'<>?/|.-"
+  operatorRead "+"  = Operator "+"  (InfixL 6)
+  operatorRead "-"  = Operator "-"  (InfixL 6)
+  operatorRead "*"  = Operator "*"  (InfixL 7)
+  operatorRead "/"  = Operator "/"  (InfixL 7)
+  operatorRead "^"  = Operator "^"  (InfixR 8)
+  operatorRead "<"  = Operator "<"  (Infix  4)
+  operatorRead ">"  = Operator ">"  (Infix  4)
+  operatorRead "||" = Operator "||" (InfixR 2)
+  operatorRead "&&" = Operator "&&" (InfixR 3)
+  operatorRead x    = Operator x    (InfixL 9)
 
 -- Parser a floating-point number
 number :: (Show e, Read a) => Parser Char e (SyntaxTree a)
-number = Literal . read <$> 
-  (   (nothing <|> string "-" <|> string "+") 
-  <+> (some digit <|> many digit <+> string "." <+> many digit)
-  )
+number = Literal . read <$> number' where
+  number' =   (nothing <|> string "-" <|> string "+") 
+          <+> (some digit <|> many digit <+> string "." <+> many digit)
 
 -- Parses a comma-separated sequence of objects that 
--- match p and combines them in a "Empty" SyntaxTree
-literals :: Show e => Parser Char e (SyntaxTree a) -> Parser Char e (SyntaxTree a)
+-- match p and combines them in a list
+literals :: Show e => Parser Char e (SyntaxTree a) -> Parser Char e [SyntaxTree a]
 literals p = nothing <|> literals' where
-  literals' = p <|> p <+> discard (char ',') <+> literals'
-
--- Runs a parser and returns the popen method of the Parentesis class
-openToken :: Parentheses b => Parser i e a -> Parser i e (b->b->b)
-openToken = fmap (const popen)
-
--- Runs a parser and returns the pclose method of the Parentesis class
-closeToken :: Parentheses b => Parser i e a -> Parser i e (b->b)
-closeToken = fmap (const pclose)
+  literals' =   sequenceA [p] 
+            <|> p <:> discard (char ',') <+> literals'
 
 -- Parses an expression of the form head[a1,a2,...] where a1,a2,... are parsed by p
 simpleExpr :: Show e => Parser Char e (SyntaxTree a) -> Parser Char e (SyntaxTree a)
-simpleExpr p =    (`Expr` []) <$> word
-             <**> openToken (char '[')
-             <*>  literals p 
-             <**> closeToken (char ']')
+simpleExpr p =   Expr <$> word <*> body where
+  body =   discard (char '[')
+       <+> literals p
+       <+> discard (char ']')
 
--- Same as before but discards the final closing token
-toplevelExpr :: Show e => Parser Char e (SyntaxTree a) -> Parser Char e (SyntaxTree a)
-toplevelExpr p =    (`Expr` []) <$> word
-               <**> openToken (char '[')
-               <*>  literals p 
-               <+>  discard (char ']')
+-- Parses a simple infix expression such as `a+b`
+simpleInfix :: Show e => Parser Char e (SyntaxTree a) -> Parser Char e (SyntaxTree a)
+simpleInfix p = p <**> (attach <$> operator) <*> p where
+  attach op a b = Expr (opName op) [a,b]
 
 -- Parses an expression of the form head[a1,a2,...] where
 -- the entries may be expressions themselves, of the same form
 expr :: Show e => Parser Char e (SyntaxTree a) -> Parser Char e (SyntaxTree a)
-expr p = toplevelExpr (expr' p) <|> p where
-  -- Haskell's lazy evaluation allows for this awesomeness
-  expr' q = simpleExpr (expr' p) <|> p
+expr p = simpleExpr (expr p) <|> p
+
+-- Parses an expression with infixes respecting their infix|l|r precedences
+longInfix :: Parser Char String (SyntaxTree a) -> Parser Char String (SyntaxTree a)
+longInfix p = constructTree =<< terms where
+  addOper token (opr, opd) = (token:opr, opd)
+  addTerm token (opr, opd) = (opr, token:opd)
+  terms' =   addTerm <$> p 
+         <|> addTerm <$> p <*< (addOper <$> operator) <*< terms'
+  terms  =   ($ ([],[])) <$> terms'
+  constructTree tuple = case constructTree' tuple of
+    Right ex             -> return ex
+    Left (Just (o1, o2)) -> let errstr = "cannot mix " ++ show o1 ++ " and " ++ show o2 ++ " in the same infix expression: "
+                            in Parser  $ \input -> [Left $ CustomError errstr input]
+    Left Nothing         -> let errstr = "invalid infix expression: "
+                            in Parser  $ \input -> [Left $ CustomError errstr input]
+  constructTree' ([op], [t1,t2]) = Right $ Expr (opName op) [t1,t2]
+  constructTree' (op1:op2:ops, t1:t2:t3:ts) = case precedence op1 op2 of
+    Right LT -> case constructTree' (op2:ops, t2:t3:ts) of
+                  Right x -> Right $ Expr (opName op1) [t1, x]
+                  Left  y -> Left y
+    Right GT -> let t2' = Expr (opName op1) [t1,t2]
+                in constructTree' (op2:ops, t2':t3:ts)
+    Left o   -> Left $ Just o
+  constructTree' x              = Left Nothing
+
+-- Parser that combines the last two things 
+exprInfix :: Parser Char String (SyntaxTree a) -> Parser Char String (SyntaxTree a)
+exprInfix p = let q = p <|> longInfix (expr p)
+              in  expr q <|> longInfix (expr q)
+
 
 {-------------------------------
   Main function definition
@@ -189,7 +224,7 @@ expr p = toplevelExpr (expr' p) <|> p where
 parseMain :: String -> String 
 parseMain input = cleanShow $ runParser parser input where
                     parser :: Parser Char String (SyntaxTree Float)
-                    parser = expr number
+                    parser = exprInfix number
 
 parseTest :: String 
 parseTest = show $ goTop tree where
