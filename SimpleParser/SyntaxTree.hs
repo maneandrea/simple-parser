@@ -10,6 +10,7 @@ module SimpleParser.SyntaxTree
   , actAt
   , goUp
   , goTop
+  , compute
   ) where
 
 import Data.List        (intercalate)
@@ -40,6 +41,13 @@ instance Functor SyntaxTree where
   fmap f (Literal a)   = Literal $ f a
   fmap f (Expr hd pts) = Expr hd $ map (fmap f) pts
 
+instance Eq a => Eq (SyntaxTree a) where
+  Literal a == Literal b = a==b
+  Empty a   == Empty b   = a==b
+  Expr h p  == Expr g q  = (h==g) && p==q
+  x         == y         = False
+
+
 -- Next we make the type for infix operators
 data Fixity = Infix Int | InfixL Int | InfixR Int
 getPrecedence :: Fixity -> Int
@@ -66,6 +74,23 @@ instance Precedence Operator where
     Right x -> Right x
     Left  y -> Left  (a,b)
 
+-- Finally, we define a method to compute known parts of an expression
+compute :: (Num a, Fractional a) => SyntaxTree a -> SyntaxTree a
+compute (Expr op [Literal x, Literal y]) = case op of
+  "+" -> Literal $ x+y
+  "-" -> Literal $ x-y
+  "*" -> Literal $ x*y
+  "/" -> Literal $ x/y
+  _   -> Expr op [Literal x, Literal y]
+compute (Expr op [a,b]) = case map compute [a,b] of
+  [Literal aa, Literal bb] -> compute $ Expr op [Literal aa, Literal bb]
+  z                        -> Expr op z
+compute (Expr op ab)    = Expr op $ map compute ab
+compute (Empty [a])     = case compute a of
+  Literal x -> Literal x
+  y         -> Empty [y]
+compute x = x
+
 instance Show a => Show (SyntaxTree a) where
   show = showDepth (-2) where
     showDepth :: Show a => Int -> SyntaxTree a -> String
@@ -74,7 +99,9 @@ instance Show a => Show (SyntaxTree a) where
       hdlen  = length hd + 2
       inside = intercalate ", " $ map (showDepth $ n+hdlen) pts
       close  = "]\n" ++ replicate n ' '
-    showDepth n (Empty pts)   = showDepth n (Expr "Sequence" pts)
+    showDepth n (Empty pts)   = "( " ++ inside ++ close where
+      inside = intercalate ", " $ map (showDepth $ n+2) pts
+      close  = ")\n" ++ replicate n ' '
 
 instance Show Operator where
   show (Operator op fix) = op ++ " [" ++ show fix ++ "]"
