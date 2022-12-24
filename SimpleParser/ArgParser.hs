@@ -2,8 +2,9 @@ module SimpleParser.ArgParser
   ( parseArgs
   , Args (..)
   , Param (..)
+  , Positional (..)
+  , Optional (..)
   , getParamValue
-  , helpString
   ) where
 import Data.List (intercalate)
 import Control.Applicative ((<|>))
@@ -86,66 +87,34 @@ parseFlag x = case x of
   _          -> Nothing
  --}
 
-parsePositional :: Int -> Maybe Positional
-parsePositional x = case x of
-  0 -> Just $ MandatoryParam "INPUT" ""
-  _ -> Nothing
-
-parseFlag :: String -> Maybe Optional
-parseFlag x = case x of
-  -- Flags that do not consume extra parameters
-  "--help"   -> Just $ OptionalFlag "help"
-  "-h"       -> Just $ OptionalFlag "help"
-  "--file"   -> Just $ OptionalFlag "file"
-  "-f"       -> Just $ OptionalFlag "file"
-  "--test"   -> Just $ OptionalFlag "test"
-  "-t"       -> Just $ OptionalFlag "test"
-  -- Flags that consume one extra parameter
-  "-o"       -> Just $ OptionalParam "output" ""
-  "--output" -> Just $ OptionalParam "output" ""
-  "--"       -> Just $ OptionalParam "INPUT" ""
-  _          -> Nothing
-
-helpString :: String 
-helpString = "usage: simple-parser [-h] [-f] [-o OUTPUT] INPUT\n\
-              \\n\
-              \Parses an expression and returns the parse tree\n\
-              \\n\
-              \positional arguments:\n\
-              \  INPUT                 input string or path of input file\n\
-              \\n\
-              \options:\n\
-              \  -f, --file            interpret input as a file path rather than an expression\n\
-              \  -h, --help            show this help message and exit\n\
-              \  -o, --output          output result in a .json file"
-
-
 unparsedArgs :: [String] -> Args
 unparsedArgs s = Args $ Right (Param ([], []), s)
 
-processArgs :: Args -> Args
-processArgs (Args (Left x)) = Args $ Left x
-processArgs (Args (Right (Param (p, o), []))) = case parsePositional (length p) of
+processArgs :: (Int -> Maybe Positional) -> (String -> Maybe Optional) -> Args -> Args
+
+processArgs parsePositional parseFlag (Args (Left x)) = Args $ Left x
+
+processArgs parsePositional parseFlag (Args (Right (Param (p, o), []))) = case parsePositional (length p) of
   Just _   -> Args $ Left $ ExpectedInput $ length p 
   Nothing  -> Args $ Right (Param (p, o), [])
 
-processArgs (Args (Right (Param (p, o), x:xs)))
+processArgs parsePositional parseFlag (Args (Right (Param (p, o), x:xs)))
   | isPositional x = case parsePositional (length  p) of
-    Just (MandatoryParam y z)       -> processArgs $ Args $ Right (Param (MandatoryParam y x:p, o), xs)
-    Just (MandatoryParamMulti y []) -> processArgs $ Args $ Right (Param (MandatoryParamMulti y headX:p, o), tailX) where
+    Just (MandatoryParam y z)       -> processArgs parsePositional parseFlag $ Args $ Right (Param (MandatoryParam y x:p, o), xs)
+    Just (MandatoryParamMulti y []) -> processArgs parsePositional parseFlag $ Args $ Right (Param (MandatoryParamMulti y headX:p, o), tailX) where
                                         (headX, tailX) = consumeUntil ([], x:xs)
     Nothing                         -> Args $ Left UnexpectedInput
   | otherwise = case parseFlag x of
     Just (OptionalFlag y)           -> case y of
                                         "help" -> Args $ Right (Param ([], [OptionalFlag y]), [])
-                                        _      -> processArgs $ Args $ Right (Param (p , OptionalFlag y:o), xs)
+                                        _      -> processArgs parsePositional parseFlag $ Args $ Right (Param (p , OptionalFlag y:o), xs)
     Just (OptionalParam "INPUT" _)  -> case xs of
                                         []     -> Args $ Left (InvalidValue "INPUT" "")
-                                        z:zs   -> processArgs $ Args $ Right (Param (MandatoryParam "INPUT" z:p, o), zs)
+                                        z:zs   -> processArgs parsePositional parseFlag $ Args $ Right (Param (MandatoryParam "INPUT" z:p, o), zs)
     Just (OptionalParam y _)        -> case xs of
                                         []     -> Args $ Left (InvalidValue y "")
-                                        z:zs   -> processArgs $ Args $ Right (Param (p , OptionalParam y z:o), zs)
-    Just (OptionalParamMulti y _)  -> processArgs $ Args $ Right (Param (p, OptionalParamMulti y headX:o), tailX) where
+                                        z:zs   -> processArgs parsePositional parseFlag $ Args $ Right (Param (p , OptionalParam y z:o), zs)
+    Just (OptionalParamMulti y _)  -> processArgs parsePositional parseFlag $ Args $ Right (Param (p, OptionalParamMulti y headX:o), tailX) where
                                         (headX, tailX) = consumeUntil ([], xs)
     Nothing                         -> Args $ Left (UnrecognizedOption x)
   where
@@ -159,8 +128,8 @@ processArgs (Args (Right (Param (p, o), x:xs)))
       | otherwise      = (a, b:bs)
 
 
-parseArgs :: [String] -> Args
-parseArgs = processArgs . unparsedArgs
+parseArgs :: (Int -> Maybe Positional) -> (String -> Maybe Optional) ->  [String] -> Args
+parseArgs x y = processArgs x y . unparsedArgs
 
 getParamValue :: String -> Param -> Maybe [String]
 getParamValue s (Param (p, o)) = get s p <|> get s o where

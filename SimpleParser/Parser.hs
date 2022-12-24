@@ -2,6 +2,7 @@ module SimpleParser.Parser
     (
       parseMain
     , parseTest
+    , parseMatch
     ) where
 
 -- See this link https://serokell.io/blog/parser-combinators-in-haskell
@@ -247,6 +248,9 @@ parseMain :: String -> String
 parseMain input = showF compute $ runParser parser input where
                     parser :: Parser Char String (SyntaxTree Float)
                     parser = exprInfix number
+
+parseMatch :: String -> String -> String
+parseMatch input pattern = show input ++ " ? " ++ show pattern
 
 parseTest :: String -> String 
 parseTest input = showAll $ runParser parser input where
