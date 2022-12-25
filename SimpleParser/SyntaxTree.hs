@@ -4,6 +4,7 @@ module SimpleParser.SyntaxTree
   , Operator (..)
   , Fixity (..)
   , Precedence (..)
+  , showDepth
   , descend
   , append
   , act
@@ -91,17 +92,28 @@ compute (Empty [a])     = case compute a of
   y         -> Empty [y]
 compute x = x
 
+showDepth :: Show a => Int -> SyntaxTree a -> String
+showDepth n (Literal x)   = show x ++ "\n"
+showDepth n (Expr hd pts) = hd ++ "[ " ++ inside ++ close where
+  hdlen  = length hd + 2
+  inside = intercalate ", " $ map (showDepth' $ n+hdlen) pts
+  close  = "]\n"
+showDepth n (Empty pts)   = "( " ++ inside ++ close where
+  inside = intercalate ", " $ map (showDepth' $ n+2) pts
+  close  = ")\n"
+
+showDepth' :: Show a => Int -> SyntaxTree a -> String
+showDepth' n (Literal x)   = show x ++ "\n" ++ replicate n ' '
+showDepth' n (Expr hd pts) = hd ++ "[ " ++ inside ++ close where
+  hdlen  = length hd + 2
+  inside = intercalate ", " $ map (showDepth' $ n+hdlen) pts
+  close  = "]\n" ++ replicate n ' '
+showDepth' n (Empty pts)   = "( " ++ inside ++ close where
+  inside = intercalate ", " $ map (showDepth' $ n+2) pts
+  close  = ")\n" ++ replicate n ' '
+
 instance Show a => Show (SyntaxTree a) where
-  show = showDepth (-2) where
-    showDepth :: Show a => Int -> SyntaxTree a -> String
-    showDepth n (Literal x)   = show x ++ "\n" ++ replicate n ' '
-    showDepth n (Expr hd pts) = hd ++ "[ " ++ inside ++ close where
-      hdlen  = length hd + 2
-      inside = intercalate ", " $ map (showDepth $ n+hdlen) pts
-      close  = "]\n" ++ replicate n ' '
-    showDepth n (Empty pts)   = "( " ++ inside ++ close where
-      inside = intercalate ", " $ map (showDepth $ n+2) pts
-      close  = ")\n" ++ replicate n ' '
+  show = showDepth (-2)
 
 instance Show Operator where
   show (Operator op fix) = op ++ " [" ++ show fix ++ "]"

@@ -18,7 +18,7 @@ import SimpleParser.SyntaxTree ( SyntaxTree (..), Operator (..), Fixity (..), Pr
 import SimpleParser.ParseError (ParseError (..), InputShow, prependHistory)
 import SimpleParser.ParseData  (ParseData (..), prependParsed)
 
-import SimpleParser.PatternMatch (Pattern (..))
+import SimpleParser.PatternMatch (Pattern (..), Rules, match, showRule)
 
 
 {-------------------------------
@@ -257,9 +257,21 @@ parseMain input = showF compute $ runParser parser input where
                     parser = exprInfix number
 
 parseMatch :: String -> String -> String
-parseMatch input pattern = cleanShow $ runParser parser input where
-                    parser :: Parser Char String (SyntaxTree (Pattern Float))
-                    parser = expr $ patternVar number
+parseMatch input pattern = safeMatch given patt where
+                    parsePatt :: Parser Char String (SyntaxTree (Pattern Float))
+                    parsePatt = expr $ patternVar number
+                    parseExpr :: Parser Char String (SyntaxTree Float)
+                    parseExpr = expr number
+                    given = clean $ runParser parseExpr input
+                    patt  = clean $ runParser parsePatt pattern
+                    safeMatch :: Either (ParseError String Char) (ParseData Char (SyntaxTree Float)) 
+                              -> Either (ParseError String Char) (ParseData Char (SyntaxTree (Pattern Float))) 
+                              -> String
+                    safeMatch (Left x) _ = show x
+                    safeMatch _ (Left x) = show x
+                    safeMatch (Right (ParseData i a j)) (Right (ParseData k b l)) = case match [] a b of
+                      Just r  -> showRule r
+                      Nothing -> show $ CustomError "The string does not match the pattern" ""
 
 parseTest :: String -> String 
 parseTest input = showAll $ runParser parser input where
