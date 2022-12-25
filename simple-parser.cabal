@@ -43,7 +43,8 @@ executable simple-parser
                       SimpleParser.ArgParser,
                       SimpleParser.SyntaxTree,
                       SimpleParser.ParseError,
-                      SimpleParser.ParseData
+                      SimpleParser.ParseData,
+                      SimpleParser.PatternMatch
                       
     -- Modules included in this executable, other than Main.
     -- other-modules:

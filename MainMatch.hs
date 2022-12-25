@@ -1,4 +1,4 @@
-module MainMatch where
+module Main where
 
 import System.Environment     (getArgs)
 import System.IO              (stderr)

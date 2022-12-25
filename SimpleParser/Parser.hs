@@ -18,6 +18,8 @@ import SimpleParser.SyntaxTree ( SyntaxTree (..), Operator (..), Fixity (..), Pr
 import SimpleParser.ParseError (ParseError (..), InputShow, prependHistory)
 import SimpleParser.ParseData  (ParseData (..), prependParsed)
 
+import SimpleParser.PatternMatch (Pattern (..))
+
 
 {-------------------------------
   Parser type and its instances
@@ -239,6 +241,11 @@ exprInfix :: Show a => Parser Char String (SyntaxTree a) -> Parser Char String (
 exprInfix p = let eiei = simpleExpr (longInfix eiei) <|> p
               in  eiei <|> longInfix eiei
 
+-- Parser that parses either a concrete value parsed by p or a variable
+patternVar :: Show e => Parser Char e (SyntaxTree a) -> Parser Char e (SyntaxTree (Pattern a))
+patternVar p =   fmap (fmap Constant) p
+             <|> Literal . Variable <$> (word <+> string "_")
+
 
 {-------------------------------
   Main function definition
@@ -250,7 +257,9 @@ parseMain input = showF compute $ runParser parser input where
                     parser = exprInfix number
 
 parseMatch :: String -> String -> String
-parseMatch input pattern = show input ++ " ? " ++ show pattern
+parseMatch input pattern = cleanShow $ runParser parser input where
+                    parser :: Parser Char String (SyntaxTree (Pattern Float))
+                    parser = expr $ patternVar number
 
 parseTest :: String -> String 
 parseTest input = showAll $ runParser parser input where
