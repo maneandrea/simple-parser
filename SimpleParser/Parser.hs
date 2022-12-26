@@ -244,7 +244,9 @@ exprInfix p = let eiei = simpleExpr (longInfix eiei) <|> p
 -- Parser that parses either a concrete value parsed by p or a variable
 patternVar :: Show e => Parser Char e (SyntaxTree a) -> Parser Char e (SyntaxTree (Pattern a))
 patternVar p =   fmap (fmap Constant) p
-             <|> Literal . Variable <$> (word <+> string "_")
+             <|> Literal . Variable <$> (word <+> string "?")
+             <|> Literal . Some <$> (word <+> string "??")
+             <|> Literal . Many <$> (word <+> string "???")
 
 
 {-------------------------------
