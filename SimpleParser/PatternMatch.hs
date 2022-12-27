@@ -1,6 +1,8 @@
 module SimpleParser.PatternMatch
     ( Pattern (..)
+    , Replacement (..)
     , match
+    , replace
     , Rules
     , showRule
     ) where
@@ -15,6 +17,10 @@ import Data.Maybe              (catMaybes)
 -- Type that represents a pattern
 data Pattern a = Variable String | Some String | Many String | Constant a
 
+-- Type that represents a backreference
+data Replacement a = BackReference String | Literally a
+
+
 instance Show a => Show (Pattern a) where
     show (Variable s) = init s
     show (Constant a) = show a
@@ -24,14 +30,18 @@ instance Eq a => Eq (Pattern a) where
     Constant s == Constant r = s == r
     x == y = False
 
+instance Eq a => Eq (Replacement a) where
+    BackReference s == BackReference r = s == r
+    Literally s == Literally r = s == r
+    x == y = False
+
 -- Type for the final assignments pattern -> subexpression
 type Rules a = [(String, SyntaxTree a)]
 
 -- We cannot make a type synonym an instance, so we define a new show function
 showRule :: Show a => Rules a -> String
 showRule []           = ""
-showRule ((s, e):rs)  = snoQ ++ " -> " ++ showDepth (length snoQ + 2) e ++ showRule rs where
-    snoQ = [ x | x <- s, x /= '?' ]
+showRule ((s, e):rs)  = s ++ " -> " ++ showDepth (length s + 2) e ++ showRule rs
  
 
 -- Appends a rule to a list of rules only if the key is not present.
@@ -46,6 +56,19 @@ addRule (s, e) r = case lookup s r of
 addRules :: Eq a => Rules a -> Rules a -> Maybe (Rules a)
 addRules [] s     = Just s
 addRules (r:rs) s = addRules rs =<< addRule r s
+
+-- Replaces the given rules in an expression
+subs :: Rules a -> SyntaxTree (Replacement a) -> SyntaxTree a
+subs r (Literal (Literally a))     = Literal a
+subs r (Literal (BackReference a)) = case lookup a r of
+    Nothing -> Expr a []
+    Just t  -> t
+subs r (Expr h p)                  = Expr h $ reconstruct p where
+    reconstruct []     = []
+    reconstruct (q:qs) = let w            = subs r q
+                             go (Empty l) = l ++ reconstruct qs
+                             go s         = s :  reconstruct qs
+                         in  go w 
 
 -- Compares an expression against a pattern. If it doesn't match returns
 -- Nothing, otherwise it returns Just the list of assignments
@@ -91,3 +114,9 @@ segmentedZip (x:xs) (y:ys) = case y of
     where
         go a z []     = (Just [(a, Empty z)] :) <$> segmentedZip [] ys
         go a z (t:ts) = ((Just [(a, Empty z)] :) <$> segmentedZip (t:ts) ys) ++ go a (z++[t]) ts 
+
+-- Compares an expression against a pattern and, if it matches, it applies a replacement
+replace :: Eq a => SyntaxTree a -> SyntaxTree (Pattern a) -> SyntaxTree (Replacement a) -> SyntaxTree a
+replace a b c = case match [] a b of
+    Nothing -> a
+    Just r  -> subs r c

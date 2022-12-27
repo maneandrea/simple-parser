@@ -4,7 +4,7 @@ import System.Environment     (getArgs)
 import System.IO              (stderr)
 import Data.Maybe             (isJust)
 
-import SimpleParser.Parser    (parseMatch, parseTest)
+import SimpleParser.Parser    (parseMatch, parseReplace, parseTest)
 import SimpleParser.ArgParser (Args (..), Param (..), Positional (..), Optional (..), parseArgs, getParamValue)
 
 getInput :: Param -> String
@@ -16,6 +16,11 @@ getPattern :: Param -> String
 getPattern p = case getParamValue "PATTERN" p of
   Just [pattern] -> pattern
   _              -> "_"
+
+getRepl :: Param -> String
+getRepl p = case getParamValue "repl" p of
+  Just [input] -> input
+  _            -> ""
 
 
 parsePositional :: Int -> Maybe Positional
@@ -37,12 +42,14 @@ parseFlag x = case x of
   "-o"       -> Just $ OptionalParam "output" ""
   "--output" -> Just $ OptionalParam "output" ""
   "--"       -> Just $ OptionalParam "INPUT" ""
+  "-r"       -> Just $ OptionalParam "repl" ""
+  "--repl"   -> Just $ OptionalParam "repl" ""
   _          -> Nothing
 
 helpString :: String 
-helpString = "usage: simple-parser [-h] [-f] [-o OUTPUT] INPUT PATTERN\n\
+helpString = "usage: pattern-match [-h] [-f] [-o OUTPUT] [-r REPL] INPUT PATTERN\n\
               \\n\
-              \Parses an expression and returns the parse tree\n\
+              \Matches an expression with a pattern\n\
               \\n\
               \positional arguments:\n\
               \  INPUT                 input string or path of input file\n\
@@ -50,6 +57,7 @@ helpString = "usage: simple-parser [-h] [-f] [-o OUTPUT] INPUT PATTERN\n\
               \\n\
               \options:\n\
               \  -f, --file            interpret input as a file path rather than an expression\n\
+              \  -r, --repl            do not return a list of assignments but replaces the pattern with this\n\
               \  -h, --help            show this help message and exit\n\
               \  -o, --output          output result in a .json file"
 
@@ -60,4 +68,5 @@ main = do
     Args (Left e)                       -> putStrLn $ "\ESC[91m\ESC[1mError\ESC[0m: " ++ show e
     Args (Right (p, _))
       | isJust $ getParamValue "help" p -> putStrLn helpString
+      | isJust $ getParamValue "repl" p -> putStr $ parseReplace (getInput p) (getPattern p) (getRepl p)
       | otherwise                       -> putStr $ parseMatch (getInput p) (getPattern p)

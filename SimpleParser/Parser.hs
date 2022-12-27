@@ -3,6 +3,7 @@ module SimpleParser.Parser
       parseMain
     , parseTest
     , parseMatch
+    , parseReplace
     ) where
 
 -- See this link https://serokell.io/blog/parser-combinators-in-haskell
@@ -18,7 +19,7 @@ import SimpleParser.SyntaxTree ( SyntaxTree (..), Operator (..), Fixity (..), Pr
 import SimpleParser.ParseError (ParseError (..), InputShow, prependHistory)
 import SimpleParser.ParseData  (ParseData (..), prependParsed)
 
-import SimpleParser.PatternMatch (Pattern (..), Rules, match, showRule)
+import SimpleParser.PatternMatch (Pattern (..), Replacement (..), Rules, match, showRule, replace)
 
 
 {-------------------------------
@@ -62,7 +63,7 @@ infixl 4  <:>
 p <:> q = (:) <$> p <*> q
 infixl 4  <*<
 (<*<) :: Applicative m => m (b -> c) -> m (a -> b) -> m (a -> c)
-p <*< q = ((.) <$> p) <*> q
+p <*< q = (.) <$> p <*> q
 
 -- When the parse is done we keep only the final result
 clean :: Eq a => [Either (ParseError String i) (ParseData i a)] -> Either (ParseError String i) (ParseData i a)
@@ -244,10 +245,14 @@ exprInfix p = let eiei = simpleExpr (longInfix eiei) <|> p
 -- Parser that parses either a concrete value parsed by p or a variable
 patternVar :: Show e => Parser Char e (SyntaxTree a) -> Parser Char e (SyntaxTree (Pattern a))
 patternVar p =   fmap (fmap Constant) p
-             <|> Literal . Variable <$> (word <+> string "?")
-             <|> Literal . Some <$> (word <+> string "??")
-             <|> Literal . Many <$> (word <+> string "???")
+             <|> Literal . Variable <$> (word <+> discard (string "?"))
+             <|> Literal . Some <$> (word <+> discard (string "??"))
+             <|> Literal . Many <$> (word <+> discard (string "???"))
 
+-- Parser that parses either a concrete value parsed by p or a backreference
+patternRepl :: Show e => Parser Char e (SyntaxTree a) -> Parser Char e (SyntaxTree (Replacement a))
+patternRepl p =   fmap (fmap Literally) p
+              <|> Literal . BackReference <$> word
 
 {-------------------------------
   Main function definition
@@ -274,6 +279,26 @@ parseMatch input pattern = safeMatch given patt where
                     safeMatch (Right (ParseData i a j)) (Right (ParseData k b l)) = case match [] a b of
                       Just r  -> showRule r
                       Nothing -> show $ CustomError "The string does not match the pattern" ""
+
+parseReplace :: String -> String -> String -> String
+parseReplace input pattern replacement = safeRepl given patt repl where
+                    parsePatt :: Parser Char String (SyntaxTree (Pattern Float))
+                    parsePatt = expr $ patternVar number
+                    parseRepl :: Parser Char String (SyntaxTree (Replacement Float))
+                    parseRepl = expr $ patternRepl number
+                    parseExpr :: Parser Char String (SyntaxTree Float)
+                    parseExpr = expr number
+                    given = clean $ runParser parseExpr input
+                    patt  = clean $ runParser parsePatt pattern
+                    repl  = clean $ runParser parseRepl replacement
+                    safeRepl :: Either (ParseError String Char) (ParseData Char (SyntaxTree Float)) 
+                             -> Either (ParseError String Char) (ParseData Char (SyntaxTree (Pattern Float)))
+                             -> Either (ParseError String Char) (ParseData Char (SyntaxTree (Replacement Float))) 
+                             -> String
+                    safeRepl (Left x) _ _ = show x
+                    safeRepl _ (Left x) _ = show x
+                    safeRepl _ _ (Left x) = show x
+                    safeRepl (Right (ParseData i a j)) (Right (ParseData k b l)) (Right (ParseData m c n)) = show $ replace a b c
 
 parseTest :: String -> String 
 parseTest input = showAll $ runParser parser input where
