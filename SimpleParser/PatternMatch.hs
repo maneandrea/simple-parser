@@ -2,6 +2,7 @@ module SimpleParser.PatternMatch
     ( Pattern (..)
     , Replacement (..)
     , match
+    , replaceTop
     , replace
     , Rules
     , showRule
@@ -9,10 +10,9 @@ module SimpleParser.PatternMatch
 
 
 import SimpleParser.SyntaxTree (SyntaxTree (..), showDepth)
-import Safe.Exact              (zipWithExactMay)
 import Control.Monad           (foldM)          
 import Data.List               (intercalate)
-import Data.Maybe              (catMaybes)
+import Data.Maybe              (catMaybes, fromMaybe)
 
 -- Type that represents a pattern
 data Pattern a = Variable String | Some String | Many String | Constant a
@@ -116,7 +116,23 @@ segmentedZip (x:xs) (y:ys) = case y of
         go a z (t:ts) = ((Just [(a, Empty z)] :) <$> segmentedZip (t:ts) ys) ++ go a (z++[t]) ts 
 
 -- Compares an expression against a pattern and, if it matches, it applies a replacement
-replace :: Eq a => SyntaxTree a -> SyntaxTree (Pattern a) -> SyntaxTree (Replacement a) -> SyntaxTree a
-replace a b c = case match [] a b of
+replaceTop :: Eq a => SyntaxTree a -> SyntaxTree (Pattern a) -> SyntaxTree (Replacement a) -> SyntaxTree a
+replaceTop a b c = case match [] a b of
     Nothing -> a
     Just r  -> subs r c
+
+-- Compares an expression or its subexpressions against a pattern and, if it matches, it applies a replacement
+-- The primed version returns Just the espression if the replacement happened and Nothing otherwise   
+replace' :: Eq a => SyntaxTree a -> SyntaxTree (Pattern a) -> SyntaxTree (Replacement a) -> Maybe (SyntaxTree a)
+replace' (Literal a) b c = (`subs` c) <$> match [] (Literal a) b
+replace' (Expr h pt) b c = case match [] (Expr h pt) b of
+    Just r  -> Just $ subs r c
+    Nothing -> let go x []     = Nothing
+                   go x (q:qs) = case replace' q b c of
+                                    Nothing -> go (x++[q]) qs
+                                    Just s  -> Just $ x ++ s : qs
+                   pt' = go [] pt
+               in  Expr h <$> pt'
+
+replace :: Eq a => SyntaxTree a -> SyntaxTree (Pattern a) -> SyntaxTree (Replacement a) -> SyntaxTree a
+replace a b c = fromMaybe a (replace' a b c)
