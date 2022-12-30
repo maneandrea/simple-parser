@@ -33,7 +33,7 @@ parseFlag x = case x of
   _          -> Nothing
 
 helpString :: String 
-helpString = "usage: simple-parser [-h] [-f] [-o OUTPUT] INPUT\n\
+helpString = "usage: simple-parser [-h] INPUT\n\
               \\n\
               \Parses an expression and returns the parse tree\n\
               \\n\
@@ -41,9 +41,7 @@ helpString = "usage: simple-parser [-h] [-f] [-o OUTPUT] INPUT\n\
               \  INPUT                 input string or path of input file\n\
               \\n\
               \options:\n\
-              \  -f, --file            interpret input as a file path rather than an expression\n\
-              \  -h, --help            show this help message and exit\n\
-              \  -o, --output          output result in a .json file"
+              \  -h, --help            show this help message and exit"
 
 
 main :: IO ()

@@ -20,9 +20,9 @@ maintainer:         andrea.manenti@yahoo.com
 -- extra-source-files: CHANGELOG.md
 
 library
-    exposed-modules:  SimpleParser.Parser
-    other-modules:    SimpleParser.ArgParser,
-                      SimpleParser.SyntaxTree,
+    exposed-modules:  SimpleParser.Parser,
+                      SimpleParser.ArgParser
+    other-modules:    SimpleParser.SyntaxTree,
                       SimpleParser.ParseError,
                       SimpleParser.ParseData,
                       SimpleParser.PatternMatch

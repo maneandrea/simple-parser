@@ -47,7 +47,7 @@ parseFlag x = case x of
   _          -> Nothing
 
 helpString :: String 
-helpString = "usage: pattern-match [-h] [-f] [-o OUTPUT] [-r REPL] INPUT PATTERN\n\
+helpString = "usage: pattern-match [-h] [-r REPL] INPUT PATTERN\n\
               \\n\
               \Matches an expression with a pattern\n\
               \\n\
@@ -56,10 +56,8 @@ helpString = "usage: pattern-match [-h] [-f] [-o OUTPUT] [-r REPL] INPUT PATTERN
               \  PATTERN               pattern string to match against INPUT\n\
               \\n\
               \options:\n\
-              \  -f, --file            interpret input as a file path rather than an expression\n\
               \  -r, --repl            do not return a list of assignments but replaces the pattern with this\n\
-              \  -h, --help            show this help message and exit\n\
-              \  -o, --output          output result in a .json file"
+              \  -h, --help            show this help message and exit"
 
 main :: IO ()
 main = do
