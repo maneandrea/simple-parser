@@ -10,3 +10,20 @@ Currently this only works for the notation without infixes operators.
 
 This was mostly an exercise for me to learn Haskell, but comments are always welcome.
 
+---
+
+To build use
+
+```
+runhaskell Setup configure --ghc-option='-dynamic' --prefix=$(pwd)
+runhaskell Setup build
+```
+
+or just simply
+
+```
+cabal configure && cabal build
+```
+
+The (dynamically built) executables are provided in the repository for convenience.
+
